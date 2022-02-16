@@ -109,6 +109,13 @@ func (f *Flex) RemoveItem(p Primitive) *Flex {
 	return f
 }
 
+// RemoveItemIndex removes the primitive at the given index from the container,
+// keeping the order of the remaining items intact.
+func (f *Flex) RemoveItemIndex(index int) *Flex {
+	f.items = append(f.items[:index], f.items[index+1:]...)
+	return f
+}
+
 // GetItemCount returns the number of items in this container.
 func (f *Flex) GetItemCount() int {
 	return len(f.items)
