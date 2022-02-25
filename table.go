@@ -51,6 +51,10 @@ type TableCell struct {
 	// on selectable cells.
 	Clicked func() bool
 
+	// The style of the selected cell. If this value is the empty struct,
+	// the selected cell is simply inverted.
+	selectedStyle tcell.Style
+
 	// The position and width of the cell the last time table was drawn.
 	x, y, width int
 }
@@ -145,6 +149,20 @@ func (c *TableCell) SetAttributes(attr tcell.AttrMask) *TableCell {
 // attributes) all at once.
 func (c *TableCell) SetStyle(style tcell.Style) *TableCell {
 	c.Color, c.BackgroundColor, c.Attributes = style.Decompose()
+	return c
+}
+
+// SetSelectedStyle sets a specific style for the selected cell. If no such style
+// is set, per default, the selected cell is inverted (i.e. its foreground and
+// background colors are swapped). This overrides the table's SelectedStyle, if
+// set. This is useful if you want to set multiple selected styles to multiple
+// cells.
+//
+// To reset a previous setting to its default, make the following call:
+//
+//   cell.SetSelectedStyle(tcell.Style{})
+func (c *TableCell) SetSelectedStyle(style tcell.Style) *TableCell {
+	c.selectedStyle = style
 	return c
 }
 
@@ -1331,7 +1349,10 @@ func (t *Table) Draw(screen tcell.Screen) {
 		entries := cellsByBackgroundColor[bgColor]
 		for _, info := range entries {
 			if info.selected {
-				if t.selectedStyle != (tcell.Style{}) {
+				if info.cell.selectedStyle != (tcell.Style{}) {
+					infoBg, infoFg, infoAttr := info.cell.selectedStyle.Decompose()
+					defer colorBackground(info.x, info.y, info.w, info.h, infoBg, infoFg, false, false, infoAttr, false)
+				} else if t.selectedStyle != (tcell.Style{}) {
 					defer colorBackground(info.x, info.y, info.w, info.h, selBg, selFg, false, false, selAttr, false)
 				} else {
 					defer colorBackground(info.x, info.y, info.w, info.h, bgColor, info.cell.Color, false, false, 0, true)
