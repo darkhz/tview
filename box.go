@@ -56,6 +56,9 @@ type Box struct {
 	// (e.g. a child primitive of a widget to which interaction is delegated).
 	hasFocus bool
 
+	// Whether or not to draw additional borders when the box has focus.
+	focusBorder bool
+
 	// Optional callback functions invoked when the primitive receives or loses
 	// focus.
 	focus, blur func()
@@ -349,6 +352,13 @@ func (b *Box) SetBorderStyle(style tcell.Style) *Box {
 	return b
 }
 
+// SetFocusBorder sets the flag indicating whether or not additional borders
+// should be drawn when the box has focus.
+func (b *Box) SetFocusBorder(border bool) *Box {
+	b.focusBorder = border
+	return b
+}
+
 // SetBorderColor sets the box's border color.
 func (b *Box) SetBorderColor(color tcell.Color) *Box {
 	b.borderStyle = b.borderStyle.Foreground(color)
@@ -435,7 +445,7 @@ func (b *Box) DrawForSubclass(screen tcell.Screen, p Primitive) {
 	// Draw border.
 	if b.border && b.width >= 2 && b.height >= 2 {
 		var vertical, horizontal, topLeft, topRight, bottomLeft, bottomRight rune
-		if p.HasFocus() {
+		if p.HasFocus() && b.focusBorder {
 			horizontal = Borders.HorizontalFocus
 			vertical = Borders.VerticalFocus
 			topLeft = Borders.TopLeftFocus
