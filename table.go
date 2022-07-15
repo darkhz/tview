@@ -30,31 +30,18 @@ type TableCell struct {
 	// used to add extra width to a column. See SetExpansion() for details.
 	Expansion int
 
-	// The color of the cell text. You should not use this anymore, it is only
-	// here for backwards compatibility. Use the Style field instead.
+	// The color of the cell text.
 	Color tcell.Color
 
-	// The background color of the cell. You should not use this anymore, it is
-	// only here for backwards compatibility. Use the Style field instead.
+	// The background color of the cell.
 	BackgroundColor tcell.Color
-
-	// The style attributes of the cell. You should not use this anymore, it is
-	// only here for backwards compatibility. Use the Style field instead.
-	Attributes tcell.AttrMask
-
-	// The style of the cell. If this is uninitialized (tcell.StyleDefault), the
-	// Color and BackgroundColor fields are used instead.
-	Style tcell.Style
-
-	// The style of the cell when it is selected. If this is uninitialized
-	// (tcell.StyleDefault), the table's selected style is used instead. If that
-	// is uninitialized as well, the cell's background and text color are
-	// swapped.
-	SelectedStyle tcell.Style
 
 	// If set to true, the BackgroundColor is not used and the cell will have
 	// the background color of the table.
 	Transparent bool
+
+	// The style attributes of the cell.
+	Attributes tcell.AttrMask
 
 	// If set to true, this cell cannot be selected.
 	NotSelectable bool
@@ -63,6 +50,13 @@ type TableCell struct {
 	// selectable. If true is returned, no additional "selected" event is fired
 	// on selectable cells.
 	Clicked func() bool
+
+	// An optional handler for mouse clicks. This fires whenever a cell is selected.
+	OnClicked func(row, column int)
+
+	// The style of the selected cell. If this value is the empty struct,
+	// the selected cell is simply inverted.
+	selectedStyle tcell.Style
 
 	// The position and width of the cell the last time table was drawn.
 	x, y, width int
@@ -73,10 +67,11 @@ type TableCell struct {
 // background (using the background of the Table).
 func NewTableCell(text string) *TableCell {
 	return &TableCell{
-		Text:        text,
-		Align:       AlignLeft,
-		Style:       tcell.StyleDefault.Foreground(Styles.PrimaryTextColor).Background(Styles.PrimitiveBackgroundColor),
-		Transparent: true,
+		Text:            text,
+		Align:           AlignLeft,
+		Color:           Styles.PrimaryTextColor,
+		BackgroundColor: Styles.PrimitiveBackgroundColor,
+		Transparent:     true,
 	}
 }
 
@@ -124,22 +119,14 @@ func (c *TableCell) SetExpansion(expansion int) *TableCell {
 
 // SetTextColor sets the cell's text color.
 func (c *TableCell) SetTextColor(color tcell.Color) *TableCell {
-	if c.Style == tcell.StyleDefault {
-		c.Color = color
-	} else {
-		c.Style = c.Style.Foreground(color)
-	}
+	c.Color = color
 	return c
 }
 
 // SetBackgroundColor sets the cell's background color. This will also cause the
 // cell's Transparent flag to be set to "false".
 func (c *TableCell) SetBackgroundColor(color tcell.Color) *TableCell {
-	if c.Style == tcell.StyleDefault {
-		c.BackgroundColor = color
-	} else {
-		c.Style = c.Style.Background(color)
-	}
+	c.BackgroundColor = color
 	c.Transparent = false
 	return c
 }
@@ -155,29 +142,30 @@ func (c *TableCell) SetTransparency(transparent bool) *TableCell {
 // SetAttributes sets the cell's text attributes. You can combine different
 // attributes using bitmask operations:
 //
-//	cell.SetAttributes(tcell.AttrItalic | tcell.AttrBold)
+//	cell.SetAttributes(tcell.AttrUnderline | tcell.AttrBold)
 func (c *TableCell) SetAttributes(attr tcell.AttrMask) *TableCell {
-	if c.Style == tcell.StyleDefault {
-		c.Attributes = attr
-	} else {
-		c.Style = c.Style.Attributes(attr)
-	}
+	c.Attributes = attr
 	return c
 }
 
 // SetStyle sets the cell's style (foreground color, background color, and
 // attributes) all at once.
 func (c *TableCell) SetStyle(style tcell.Style) *TableCell {
-	c.Style = style
+	c.Color, c.BackgroundColor, c.Attributes = style.Decompose()
 	return c
 }
 
-// SetSelectedStyle sets the cell's style when it is selected. If this is
-// uninitialized (tcell.StyleDefault), the table's selected style is used
-// instead. If that is uninitialized as well, the cell's background and text
-// color are swapped.
+// SetSelectedStyle sets a specific style for the selected cell. If no such style
+// is set, per default, the selected cell is inverted (i.e. its foreground and
+// background colors are swapped). This overrides the table's SelectedStyle, if
+// set. This is useful if you want to set multiple selected styles to multiple
+// cells.
+//
+// To reset a previous setting to its default, make the following call:
+//
+//   cell.SetSelectedStyle(tcell.Style{})
 func (c *TableCell) SetSelectedStyle(style tcell.Style) *TableCell {
-	c.SelectedStyle = style
+	c.selectedStyle = style
 	return c
 }
 
@@ -217,6 +205,12 @@ func (c *TableCell) GetLastPosition() (x, y, width int) {
 // cells, if the function returns "true", the "selected" event is not fired.
 func (c *TableCell) SetClickedFunc(clicked func() bool) *TableCell {
 	c.Clicked = clicked
+	return c
+}
+
+// SetOnClickedFunc sets a handler which fires when this cell is clicked.
+func (c *TableCell) SetOnClickedFunc(onclicked func(row, column int)) *TableCell {
+	c.OnClicked = onclicked
 	return c
 }
 
@@ -411,33 +405,32 @@ func (t *tableDefaultContent) GetColumnCount() int {
 }
 
 // Table visualizes two-dimensional data consisting of rows and columns. Each
-// Table cell is defined via [Table.SetCell] by the [TableCell] type. They can
-// be added dynamically to the table and changed any time.
+// Table cell is defined via SetCell() by the TableCell type. They can be added
+// dynamically to the table and changed any time.
 //
 // The most compact display of a table is without borders. Each row will then
 // occupy one row on screen and columns are separated by the rune defined via
-// [Table.SetSeparator] (a space character by default).
+// SetSeparator() (a space character by default).
 //
-// When borders are turned on (via [Table.SetBorders]), each table cell is
-// surrounded by lines. Therefore one table row will require two rows on screen.
+// When borders are turned on (via SetBorders()), each table cell is surrounded
+// by lines. Therefore one table row will require two rows on screen.
 //
 // Columns will use as much horizontal space as they need. You can constrain
-// their size with the [TableCell.MaxWidth] parameter of the [TableCell] type.
+// their size with the MaxWidth parameter of the TableCell type.
 //
 // # Fixed Columns
 //
-// You can define fixed rows and rolumns via [Table.SetFixed]. They will always
-// stay in their place, even when the table is scrolled. Fixed rows are always
-// the top rows. Fixed columns are always the leftmost columns.
+// You can define fixed rows and rolumns via SetFixed(). They will always stay
+// in their place, even when the table is scrolled. Fixed rows are always the
+// top rows. Fixed columns are always the leftmost columns.
 //
 // # Selections
 //
-// You can call [Table.SetSelectable] to set columns and/or rows to
-// "selectable". If the flag is set only for columns, entire columns can be
-// selected by the user. If it is set only for rows, entire rows can be
-// selected. If both flags are set, individual cells can be selected. The
-// "selected" handler set via [Table.SetSelectedFunc] is invoked when the user
-// presses Enter on a selection.
+// You can call SetSelectable() to set columns and/or rows to "selectable". If
+// the flag is set only for columns, entire columns can be selected by the user.
+// If it is set only for rows, entire rows can be selected. If both flags are
+// set, individual cells can be selected. The "selected" handler set via
+// SetSelectedFunc() is invoked when the user presses Enter on a selection.
 //
 // # Navigation
 //
@@ -457,7 +450,7 @@ func (t *tableDefaultContent) GetColumnCount() int {
 // rows and columns). When there is a selection, the user moves the selection.
 // The class will attempt to keep the selection from moving out of the screen.
 //
-// Use [Box.SetInputCapture] to override or modify keyboard input.
+// Use SetInputCapture() to override or modify keyboard input.
 //
 // See https://github.com/rivo/tview/wiki/Table for an example.
 type Table struct {
@@ -538,7 +531,7 @@ type Table struct {
 	done func(key tcell.Key)
 }
 
-// NewTable returns a new [Table].
+// NewTable returns a new table.
 func NewTable() *Table {
 	t := &Table{
 		Box:          NewBox(),
@@ -546,7 +539,6 @@ func NewTable() *Table {
 		separator:    ' ',
 	}
 	t.SetContent(nil)
-	t.Box.Primitive = t
 	return t
 }
 
@@ -588,12 +580,12 @@ func (t *Table) SetBordersColor(color tcell.Color) *Table {
 }
 
 // SetSelectedStyle sets a specific style for selected cells. If no such style
-// is set, the cell's background and text color are swapped. If a cell defines
-// its own selected style, that will be used instead.
+// is set, per default, selected cells are inverted (i.e. their foreground and
+// background colors are swapped).
 //
 // To reset a previous setting to its default, make the following call:
 //
-//	table.SetSelectedStyle(tcell.StyleDefault)
+//	table.SetSelectedStyle(tcell.Style{})
 func (t *Table) SetSelectedStyle(style tcell.Style) *Table {
 	t.selectedStyle = style
 	return t
@@ -791,14 +783,11 @@ func (t *Table) GetColumnCount() int {
 	return t.content.GetColumnCount()
 }
 
-// CellAt returns the row and column located at the given screen coordinates.
+// cellAt returns the row and column located at the given screen coordinates.
 // Each returned value may be negative if there is no row and/or cell. This
 // function will also process coordinates outside the table's inner rectangle so
 // callers will need to check for bounds themselves.
-//
-// The layout of the table when it was last drawn is used so if anything has
-// changed in the meantime, the results may not be reliable.
-func (t *Table) CellAt(x, y int) (row, column int) {
+func (t *Table) cellAt(x, y int) (row, column int) {
 	rectX, rectY, _, _ := t.GetInnerRect()
 
 	// Determine row as seen on screen.
@@ -1206,11 +1195,7 @@ func (t *Table) Draw(screen tcell.Screen) {
 				finalWidth = width - columnX
 			}
 			cell.x, cell.y, cell.width = x+columnX, y+rowY, finalWidth
-			style := cell.Style
-			if style == tcell.StyleDefault {
-				style = tcell.StyleDefault.Background(cell.BackgroundColor).Foreground(cell.Color).Attributes(cell.Attributes)
-			}
-			start, end, _ := printWithStyle(screen, cell.Text, x+columnX, y+rowY, 0, finalWidth, cell.Align, style, true)
+			start, end, _ := printWithStyle(screen, cell.Text, x+columnX, y+rowY, 0, finalWidth, cell.Align, tcell.StyleDefault.Foreground(cell.Color).Attributes(cell.Attributes), true)
 			printed := end - start
 			if TaggedStringWidth(cell.Text)-printed > 0 && printed > 0 {
 				_, _, style, _ := screen.GetContent(x+columnX+finalWidth-1, y+rowY)
@@ -1343,12 +1328,8 @@ func (t *Table) Draw(screen tcell.Screen) {
 			}
 			columnSelected := t.columnsSelectable && !t.rowsSelectable && column == t.selectedColumn
 			cellSelected := !cell.NotSelectable && (columnSelected || rowSelected || t.rowsSelectable && t.columnsSelectable && column == t.selectedColumn && row == t.selectedRow)
-			backgroundColor := cell.BackgroundColor
-			if cell.Style != tcell.StyleDefault {
-				_, backgroundColor, _ = cell.Style.Decompose()
-			}
-			entries, ok := cellsByBackgroundColor[backgroundColor]
-			cellsByBackgroundColor[backgroundColor] = append(entries, &cellInfo{
+			entries, ok := cellsByBackgroundColor[cell.BackgroundColor]
+			cellsByBackgroundColor[cell.BackgroundColor] = append(entries, &cellInfo{
 				x:        bx,
 				y:        by,
 				w:        bw,
@@ -1357,7 +1338,7 @@ func (t *Table) Draw(screen tcell.Screen) {
 				selected: cellSelected,
 			})
 			if !ok {
-				backgroundColors = append(backgroundColors, backgroundColor)
+				backgroundColors = append(backgroundColors, cell.BackgroundColor)
 			}
 			columnX += columnWidth + 1
 		}
@@ -1372,25 +1353,21 @@ func (t *Table) Draw(screen tcell.Screen) {
 		_, _, lj := c.Hcl()
 		return li < lj
 	})
+	selFg, selBg, selAttr := t.selectedStyle.Decompose()
 	for _, bgColor := range backgroundColors {
 		entries := cellsByBackgroundColor[bgColor]
 		for _, info := range entries {
-			textColor := info.cell.Color
-			if info.cell.Style != tcell.StyleDefault {
-				textColor, _, _ = info.cell.Style.Decompose()
-			}
 			if info.selected {
-				if info.cell.SelectedStyle != tcell.StyleDefault {
-					selFg, selBg, selAttr := info.cell.SelectedStyle.Decompose()
-					defer colorBackground(info.x, info.y, info.w, info.h, selBg, selFg, false, false, selAttr, false)
-				} else if t.selectedStyle != tcell.StyleDefault {
-					selFg, selBg, selAttr := t.selectedStyle.Decompose()
+				if info.cell.selectedStyle != (tcell.Style{}) {
+					infoBg, infoFg, infoAttr := info.cell.selectedStyle.Decompose()
+					defer colorBackground(info.x, info.y, info.w, info.h, infoBg, infoFg, false, false, infoAttr, false)
+				} else if t.selectedStyle != (tcell.Style{}) {
 					defer colorBackground(info.x, info.y, info.w, info.h, selBg, selFg, false, false, selAttr, false)
 				} else {
-					defer colorBackground(info.x, info.y, info.w, info.h, bgColor, textColor, false, false, 0, true)
+					defer colorBackground(info.x, info.y, info.w, info.h, bgColor, info.cell.Color, false, false, 0, true)
 				}
 			} else {
-				colorBackground(info.x, info.y, info.w, info.h, bgColor, textColor, info.cell.Transparent, true, 0, false)
+				colorBackground(info.x, info.y, info.w, info.h, bgColor, info.cell.Color, info.cell.Transparent, true, 0, false)
 			}
 		}
 	}
@@ -1507,7 +1484,6 @@ func (t *Table) InputHandler() func(event *tcell.EventKey, setFocus func(p Primi
 
 			down = func() {
 				if t.rowsSelectable {
-					row, column := t.selectedRow, t.selectedColumn
 					t.selectedRow++
 					if t.selectedRow >= rowCount {
 						if t.wrapVertically {
@@ -1516,6 +1492,7 @@ func (t *Table) InputHandler() func(event *tcell.EventKey, setFocus func(p Primi
 							t.selectedRow = rowCount - 1
 						}
 					}
+					row, column := t.selectedRow, t.selectedColumn
 					finalRow, finalColumn := rowCount-1, lastColumn
 					if t.wrapVertically {
 						finalRow = row
@@ -1532,7 +1509,6 @@ func (t *Table) InputHandler() func(event *tcell.EventKey, setFocus func(p Primi
 
 			up = func() {
 				if t.rowsSelectable {
-					row, column := t.selectedRow, t.selectedColumn
 					t.selectedRow--
 					if t.selectedRow < 0 {
 						if t.wrapVertically {
@@ -1541,6 +1517,7 @@ func (t *Table) InputHandler() func(event *tcell.EventKey, setFocus func(p Primi
 							t.selectedRow = 0
 						}
 					}
+					row, column := t.selectedRow, t.selectedColumn
 					finalRow, finalColumn := 0, 0
 					if t.wrapVertically {
 						finalRow = row
@@ -1733,11 +1710,15 @@ func (t *Table) MouseHandler() func(action MouseAction, event *tcell.EventMouse,
 			consumed = true
 		case MouseLeftClick:
 			selectEvent := true
-			row, column := t.CellAt(x, y)
+			row, column := t.cellAt(x, y)
 			cell := t.content.GetCell(row, column)
 			if cell != nil && cell.Clicked != nil {
 				if noSelect := cell.Clicked(); noSelect {
 					selectEvent = false
+				}
+
+				if cell.OnClicked != nil {
+					cell.OnClicked(row, column)
 				}
 			}
 			if selectEvent && (t.rowsSelectable || t.columnsSelectable) {
