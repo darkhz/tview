@@ -1762,9 +1762,17 @@ func (t *Table) MouseHandler() func(action MouseAction, event *tcell.EventMouse,
 		case MouseScrollUp:
 			t.trackEnd = false
 			t.rowOffset--
+			row, _ := t.GetSelection()
+			if row-1 >= 0 && row-1 < t.GetRowCount() {
+				t.Select(row-1, 0)
+			}
 			consumed = true
 		case MouseScrollDown:
 			t.rowOffset++
+			row, _ := t.GetSelection()
+			if row+1 >= 0 && row+1 < t.GetRowCount() {
+				t.Select(row+1, 0)
+			}
 			consumed = true
 		}
 
