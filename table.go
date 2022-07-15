@@ -64,6 +64,9 @@ type TableCell struct {
 	// on selectable cells.
 	Clicked func() bool
 
+	// An optional handler for mouse clicks. This fires whenever a cell is selected.
+	OnClicked func(row, column int)
+
 	// The position and width of the cell the last time table was drawn.
 	x, y, width int
 }
@@ -217,6 +220,12 @@ func (c *TableCell) GetLastPosition() (x, y, width int) {
 // cells, if the function returns "true", the "selected" event is not fired.
 func (c *TableCell) SetClickedFunc(clicked func() bool) *TableCell {
 	c.Clicked = clicked
+	return c
+}
+
+// SetOnClickedFunc sets a handler which fires when this cell is clicked.
+func (c *TableCell) SetOnClickedFunc(onclicked func(row, column int)) *TableCell {
+	c.OnClicked = onclicked
 	return c
 }
 
@@ -1738,6 +1747,10 @@ func (t *Table) MouseHandler() func(action MouseAction, event *tcell.EventMouse,
 			if cell != nil && cell.Clicked != nil {
 				if noSelect := cell.Clicked(); noSelect {
 					selectEvent = false
+				}
+
+				if cell.OnClicked != nil {
+					cell.OnClicked(row, column)
 				}
 			}
 			if selectEvent && (t.rowsSelectable || t.columnsSelectable) {
