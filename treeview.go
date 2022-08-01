@@ -113,6 +113,11 @@ func (n *TreeNode) SetChildren(childNodes []*TreeNode) *TreeNode {
 	return n
 }
 
+// GetParent returns this node's parent node.
+func (t *TreeNode) GetParent() *TreeNode {
+	return t.parent
+}
+
 // GetText returns this node's text.
 func (n *TreeNode) GetText() string {
 	return n.text
