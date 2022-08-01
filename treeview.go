@@ -187,7 +187,7 @@ func (n *TreeNode) ExpandAll() *TreeNode {
 // CollapseAll collapses this node and all descendent nodes.
 func (n *TreeNode) CollapseAll() *TreeNode {
 	n.Walk(func(node, parent *TreeNode) bool {
-		node.expanded = false
+		n.expanded = false
 		return true
 	})
 	return n
@@ -303,6 +303,9 @@ type TreeView struct {
 
 	// The color of the lines.
 	graphicsColor tcell.Color
+
+	// Style for the currently selected node.
+	selectedStyle tcell.Style
 
 	// An optional function which is called when the user has navigated to a new
 	// tree node.
@@ -433,6 +436,12 @@ func (t *TreeView) SetGraphics(showGraphics bool) *TreeView {
 // SetGraphicsColor sets the colors of the lines used to draw the tree structure.
 func (t *TreeView) SetGraphicsColor(color tcell.Color) *TreeView {
 	t.graphicsColor = color
+	return t
+}
+
+// SetSelectedStyle sets the style for the currently selected node.
+func (t *TreeView) SetSelectedStyle(style tcell.Style) *TreeView {
+	t.selectedStyle = style
 	return t
 }
 
@@ -748,7 +757,11 @@ func (t *TreeView) Draw(screen tcell.Screen) {
 			if node.textX+prefixWidth < width {
 				style := tcell.StyleDefault.Background(t.backgroundColor).Foreground(node.color)
 				if node == t.currentNode {
-					style = tcell.StyleDefault.Background(node.color).Foreground(t.backgroundColor)
+					if t.selectedStyle != (tcell.Style{}) {
+						style = t.selectedStyle
+					} else {
+						style = tcell.StyleDefault.Background(node.color).Foreground(t.backgroundColor)
+					}
 				}
 				printWithStyle(screen, node.text, x+node.textX+prefixWidth, posY, 0, width-node.textX-prefixWidth, AlignLeft, style, false)
 			}
