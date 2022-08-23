@@ -52,7 +52,7 @@ type TableCell struct {
 	Clicked func() bool
 
 	// An optional handler for mouse clicks. This fires whenever a cell is selected.
-	OnClicked func(row, column int)
+	OnClicked func(table *Table, row, column int)
 
 	// The style of the selected cell. If this value is the empty struct,
 	// the selected cell is simply inverted.
@@ -209,7 +209,7 @@ func (c *TableCell) SetClickedFunc(clicked func() bool) *TableCell {
 }
 
 // SetOnClickedFunc sets a handler which fires when this cell is clicked.
-func (c *TableCell) SetOnClickedFunc(onclicked func(row, column int)) *TableCell {
+func (c *TableCell) SetOnClickedFunc(onclicked func(t *Table, row, column int)) *TableCell {
 	c.OnClicked = onclicked
 	return c
 }
@@ -481,6 +481,8 @@ type Table struct {
 
 	// The currently selected row and column.
 	selectedRow, selectedColumn int
+
+	PrevRow, PrevColumn int
 
 	// A temporary flag which causes the next call to Draw() to force the
 	// current selection to remain visible. It is set to false afterwards.
@@ -1718,7 +1720,7 @@ func (t *Table) MouseHandler() func(action MouseAction, event *tcell.EventMouse,
 				}
 
 				if cell.OnClicked != nil {
-					cell.OnClicked(row, column)
+					cell.OnClicked(t, row, column)
 				}
 			}
 			if selectEvent && (t.rowsSelectable || t.columnsSelectable) {
