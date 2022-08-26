@@ -520,6 +520,10 @@ func (a *Application) fireMouseActions(event *tcell.EventMouse) (consumed, isMou
 			if handler := primitive.MouseHandler(); handler != nil {
 				var wasConsumed bool
 				wasConsumed, capturingPrimitive = handler(action, event, func(p Primitive) {
+					if !p.EnabledFocus() {
+						return
+					}
+
 					a.SetFocus(p)
 				})
 				if wasConsumed {

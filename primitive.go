@@ -38,6 +38,9 @@ type Primitive interface {
 	// Implementers may call delegate() to pass the focus on to another primitive.
 	Focus(delegate func(p Primitive))
 
+	// EnabledFocus determines if the primitive has focus enabled.
+	EnabledFocus() bool
+
 	// HasFocus determines if the primitive has focus. This function must return
 	// true also if one of this primitive's child elements has focus.
 	HasFocus() bool

@@ -50,6 +50,9 @@ type Box struct {
 	// focus to their children.
 	hasFocus bool
 
+	// Whether or not to enable focus for this box.
+	enableFocus bool
+
 	// Whether or not to draw additional borders when the box has focus.
 	focusBorder bool
 
@@ -263,6 +266,11 @@ func (b *Box) InRect(x, y int) bool {
 	return x >= rectX && x < rectX+width && y >= rectY && y < rectY+height
 }
 
+// EnabledFocus returns true if focus is enabled for the box.
+func (b *Box) EnabledFocus() bool {
+	return b.enableFocus
+}
+
 // GetMouseCapture returns the function installed with SetMouseCapture() or nil
 // if no such function has been installed.
 func (b *Box) GetMouseCapture() func(action MouseAction, event *tcell.EventMouse) (MouseAction, *tcell.EventMouse) {
@@ -433,6 +441,12 @@ func (b *Box) DrawForSubclass(screen tcell.Screen, p Primitive) {
 		b.innerX = -1
 		b.innerX, b.innerY, b.innerWidth, b.innerHeight = b.GetInnerRect()
 	}
+}
+
+// SetEnableFocus sets the flag indicating whether or not focus should
+// be enabled for the box.
+func (b *Box) SetEnableFocus(enable bool) {
+	b.enableFocus = enable
 }
 
 // SetFocusFunc sets a callback function which is invoked when this primitive

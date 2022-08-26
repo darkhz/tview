@@ -1723,6 +1723,7 @@ func (t *Table) MouseHandler() func(action MouseAction, event *tcell.EventMouse,
 					cell.OnClicked(t, row, column)
 				}
 			}
+
 			if selectEvent && (t.rowsSelectable || t.columnsSelectable) {
 				t.Select(row, column)
 			}
