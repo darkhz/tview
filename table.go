@@ -475,6 +475,12 @@ type Table struct {
 	// Whether or not this table has borders around each cell.
 	borders bool
 
+	// Whether or not to arrange items with extra spacing, just
+	// as setting the borders option would do, with the only
+	// difference being that the rune used to draw all borders
+	// would be a space character.
+	expandSpace bool
+
 	// The color of the borders or the separator.
 	bordersColor tcell.Color
 
@@ -589,6 +595,15 @@ func (t *Table) Clear() *Table {
 // border.
 func (t *Table) SetBorders(show bool) *Table {
 	t.borders = show
+	return t
+}
+
+// SetExpandSpace sets whether or not to arrange table items exactly as
+// they would be arranged when enabling table borders, with the only
+// difference that all table borders are not shown.
+func (t *Table) SetExpandSpace(space bool) *Table {
+	t.SetBorders(true)
+	t.expandSpace = true
 	return t
 }
 
@@ -1167,6 +1182,10 @@ func (t *Table) Draw(screen tcell.Screen) {
 	// Helper function which draws border runes.
 	borderStyle := tcell.StyleDefault.Background(t.backgroundColor).Foreground(t.bordersColor)
 	drawBorder := func(colX, rowY int, ch rune) {
+		if t.expandSpace {
+			ch = ' '
+		}
+
 		screen.SetContent(x+colX, y+rowY, ch, nil, borderStyle)
 	}
 
