@@ -236,6 +236,16 @@ func (p *Pages) GetFrontPage() (name string, item Primitive) {
 	return
 }
 
+func (p *Pages) GetPageItem(name string) Primitive {
+	for index := len(p.pages) - 1; index >= 0; index-- {
+		if p.pages[index].Name == name {
+			return p.pages[index].Item
+		}
+	}
+
+	return nil
+}
+
 // HasFocus returns whether or not this primitive has focus.
 func (p *Pages) HasFocus() bool {
 	for _, page := range p.pages {
