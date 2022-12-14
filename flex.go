@@ -212,6 +212,11 @@ func (f *Flex) Draw(screen tcell.Screen) {
 
 // Focus is called when this primitive receives focus.
 func (f *Flex) Focus(delegate func(p Primitive)) {
+	if f.focus != nil {
+		f.focus()
+		return
+	}
+
 	for _, item := range f.items {
 		if item.Item != nil && item.Focus {
 			delegate(item.Item)
