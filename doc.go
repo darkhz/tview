@@ -18,9 +18,10 @@ The package implements the following widgets:
   - [InputField]: One-line input fields to enter text.
   - [DropDown]: Drop-down selection fields.
   - [Checkbox]: Selectable checkbox for boolean values.
+  - [Image]: Displays images.
   - [Button]: Buttons which get activated when the user selects them.
-  - Form: Forms composed of input fields, drop down selections, checkboxes, and
-    buttons.
+  - [Form]: Forms composed of input fields, drop down selections, checkboxes,
+    and buttons.
   - [Modal]: A centered window with a text message and one or more buttons.
   - [Grid]: A grid based layout manager.
   - [Flex]: A Flexbox based layout manager.
@@ -170,7 +171,23 @@ are executed in the main goroutine and thus should not use
 # Type Hierarchy
 
 All widgets listed above contain the [Box] type. All of [Box]'s functions are
-therefore available for all widgets, too.
+therefore available for all widgets, too. Please note that if you are using the
+functions of [Box] on a subclass, they will return a *Box, not the subclass. So
+while tview supports method chaining in many places, these chains must be broken
+when using [Box]'s functions. Example:
+
+	// This will cause "textArea" to be an empty Box.
+	textArea := tview.NewTextArea().
+		SetMaxLength(256).
+		SetPlaceholder("Enter text here").
+		SetBorder(true)
+
+You will need to call [Box.SetBorder] separately:
+
+	textArea := tview.NewTextArea().
+		SetMaxLength(256).
+		SetPlaceholder("Enter text here")
+	texArea.SetBorder(true)
 
 All widgets also implement the [Primitive] interface.
 

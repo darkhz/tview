@@ -2,6 +2,7 @@ package tview
 
 import (
 	"math"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -10,11 +11,13 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// Text alignment within a box.
+// Text alignment within a box. Also used to align images.
 const (
 	AlignLeft = iota
 	AlignCenter
 	AlignRight
+	AlignTop    = 0
+	AlignBottom = 2
 )
 
 // Common regular expressions.
@@ -33,6 +36,9 @@ const (
 	colorBackgroundPos = 3
 	colorFlagPos       = 5
 )
+
+// The number of colors available in the terminal.
+var availableColors = 256
 
 // Predefined InputField acceptance functions.
 var (
@@ -70,6 +76,12 @@ func init() {
 		return func(text string, ch rune) bool {
 			return len([]rune(text)) <= maxLength
 		}
+	}
+
+	// Determine the number of colors available in the terminal.
+	info, err := tcell.LookupTerminfo(os.Getenv("TERM"))
+	if err == nil {
+		availableColors = info.Colors
 	}
 }
 

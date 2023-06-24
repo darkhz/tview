@@ -15,7 +15,24 @@ type listItem struct {
 	Selected      func() // The optional function which is called when the item is selected.
 }
 
-// List displays rows of items, each of which can be selected.
+// List displays rows of items, each of which can be selected. List items can be
+// shown as a single line or as two lines. They can be selected by pressing
+// their assigned shortcut key, navigating to them and pressing Enter, or
+// clicking on them with the mouse. The following key binds are available:
+//
+//   - Down arrow / tab: Move down one item.
+//   - Up arrow / backtab: Move up one item.
+//   - Home: Move to the first item.
+//   - End: Move to the last item.
+//   - Page down: Move down one page.
+//   - Page up: Move up one page.
+//   - Enter / Space: Select the current item.
+//   - Right / left: Scroll horizontally. Only if the list is wider than the
+//     available space.
+//
+// See [List.SetChangedFunc] for a way to be notified when the user navigates
+// to a list item. See [List.SetSelectedFunc] for a way to be notified when a
+// list item was selected.
 //
 // See https://github.com/rivo/tview/wiki/List for an example.
 type List struct {
@@ -64,8 +81,8 @@ type List struct {
 	// of the right arrow key.
 	overflowing bool
 
-	// An optional function which is called when the user has navigated to a list
-	// item.
+	// An optional function which is called when the user has navigated to a
+	// list item.
 	changed func(index int, mainText, secondaryText string, shortcut rune)
 
 	// An optional function which is called when a list item was selected. This
@@ -76,7 +93,7 @@ type List struct {
 	done func()
 }
 
-// NewList returns a new form.
+// NewList returns a new list.
 func NewList() *List {
 	return &List{
 		Box:                NewBox(),
@@ -112,6 +129,8 @@ func (l *List) SetCurrentItem(index int) *List {
 	}
 
 	l.currentItem = index
+
+	l.adjustOffset()
 
 	return l
 }
@@ -471,18 +490,6 @@ func (l *List) Draw(screen tcell.Screen) {
 		}
 	}
 
-	// Adjust offset to keep the current selection in view.
-	if l.currentItem < l.itemOffset {
-		l.itemOffset = l.currentItem
-	} else if l.showSecondaryText {
-		if 2*(l.currentItem-l.itemOffset) >= height-1 {
-			l.itemOffset = (2*l.currentItem + 3 - height) / 2
-		}
-	} else {
-		if l.currentItem-l.itemOffset >= height {
-			l.itemOffset = l.currentItem + 1 - height
-		}
-	}
 	if l.horizontalOffset < 0 {
 		l.horizontalOffset = 0
 	}
@@ -563,6 +570,26 @@ func (l *List) Draw(screen tcell.Screen) {
 		l.Draw(screen)
 	}
 	l.overflowing = overflowing
+}
+
+// adjustOffset adjusts the vertical offset to keep the current selection in
+// view.
+func (l *List) adjustOffset() {
+	_, _, _, height := l.GetInnerRect()
+	if height == 0 {
+		return
+	}
+	if l.currentItem < l.itemOffset {
+		l.itemOffset = l.currentItem
+	} else if l.showSecondaryText {
+		if 2*(l.currentItem-l.itemOffset) >= height-1 {
+			l.itemOffset = (2*l.currentItem + 3 - height) / 2
+		}
+	} else {
+		if l.currentItem-l.itemOffset >= height {
+			l.itemOffset = l.currentItem + 1 - height
+		}
+	}
 }
 
 // InputHandler returns the handler for this primitive.
@@ -662,9 +689,12 @@ func (l *List) InputHandler() func(event *tcell.EventKey, setFocus func(p Primit
 			}
 		}
 
-		if l.currentItem != previousItem && l.currentItem < len(l.items) && l.changed != nil {
-			item := l.items[l.currentItem]
-			l.changed(l.currentItem, item.MainText, item.SecondaryText, item.Shortcut)
+		if l.currentItem != previousItem && l.currentItem < len(l.items) {
+			if l.changed != nil {
+				item := l.items[l.currentItem]
+				l.changed(l.currentItem, item.MainText, item.SecondaryText, item.Shortcut)
+			}
+			l.adjustOffset()
 		}
 	})
 }
@@ -699,6 +729,7 @@ func (l *List) MouseHandler() func(action MouseAction, event *tcell.EventMouse, 
 		// Process mouse event.
 		switch action {
 		case MouseLeftClick:
+			setFocus(l)
 			index := l.indexAtPoint(event.Position())
 			if index != -1 {
 				item := l.items[index]
@@ -708,12 +739,14 @@ func (l *List) MouseHandler() func(action MouseAction, event *tcell.EventMouse, 
 				if l.selected != nil {
 					l.selected(index, item.MainText, item.SecondaryText, item.Shortcut)
 				}
-				if index != l.currentItem && l.changed != nil {
-					l.changed(index, item.MainText, item.SecondaryText, item.Shortcut)
+				if index != l.currentItem {
+					if l.changed != nil {
+						l.changed(index, item.MainText, item.SecondaryText, item.Shortcut)
+					}
+					l.adjustOffset()
 				}
 				l.currentItem = index
 			}
-			setFocus(l)
 			consumed = true
 		case MouseScrollUp:
 			if l.itemOffset > 0 {
