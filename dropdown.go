@@ -120,6 +120,11 @@ func NewDropDown() *DropDown {
 	return d
 }
 
+// List returns the list item associated with the dropdown.
+func (d *DropDown) List() *List {
+	return d.list
+}
+
 // SetCurrentOption sets the index of the currently selected option. This may
 // be a negative value to indicate that no option is currently selected. Calling
 // this function will also trigger the "selected" callback (if there is one).
@@ -511,6 +516,12 @@ func (d *DropDown) Draw(screen tcell.Screen) {
 		lwidth := maxWidth
 		lheight := len(d.options)
 		swidth, sheight := screen.Size()
+
+		// Increase the list's width and height if borders are present.
+		if d.list.border {
+			lwidth += 2
+			lheight += 2
+		}
 		// We prefer to align the left sides of the list and the main widget, but
 		// if there is no space to the right, then shift the list to the left.
 		if lx+lwidth >= swidth {
