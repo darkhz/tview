@@ -1765,9 +1765,11 @@ func (t *Table) MouseHandler() func(action MouseAction, event *tcell.EventMouse,
 			selectEvent := true
 			row, column := t.CellAt(x, y)
 			cell := t.content.GetCell(row, column)
-			if cell != nil && cell.Clicked != nil {
-				if noSelect := cell.Clicked(); noSelect {
-					selectEvent = false
+			if cell != nil {
+				if cell.Clicked != nil {
+					if noSelect := cell.Clicked(); noSelect {
+						selectEvent = false
+					}
 				}
 
 				if cell.OnClicked != nil {
