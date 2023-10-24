@@ -790,6 +790,23 @@ func (t *TextView) GetRegionIDs() []string {
 	return regionIDs
 }
 
+// GetRegionStart returns the start position of the region.
+func (t *TextView) GetRegionStart(region string) int {
+	lineNumber, ok := t.regions[region]
+	if !ok {
+		return 0
+	}
+
+	line := t.lineIndex[lineNumber]
+
+	regions, ok := line.regions[region]
+	if !ok {
+		return 0
+	}
+
+	return regions[0]
+}
+
 // Focus is called when this primitive receives focus.
 func (t *TextView) Focus(delegate func(p Primitive)) {
 	// Implemented here with locking because this is used by layout primitives.
