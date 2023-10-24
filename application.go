@@ -569,8 +569,8 @@ func (a *Application) Draw() *Application {
 
 // ForceDraw refreshes the screen immediately. Use this function with caution as
 // it may lead to race conditions with updates to primitives in other
-// goroutines. It is always preferrable to use Draw() instead. Never call this
-// function from a goroutine.
+// goroutines. It is always preferrable to call [Application.Draw] instead.
+// Never call this function from a goroutine.
 //
 // It is safe to call this function during queued updates and direct event
 // handling.
@@ -599,6 +599,9 @@ func (a *Application) draw() *Application {
 		width, height := screen.Size()
 		root.SetRect(0, 0, width, height)
 	}
+
+	// Clear screen to remove unwanted artifacts from the previous cycle.
+	screen.Clear()
 
 	// Call before handler if there is one.
 	if before != nil {
