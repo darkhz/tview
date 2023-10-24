@@ -1,6 +1,7 @@
 package tview
 
 import (
+	"sort"
 	"math"
 	"strings"
 	"sync"
@@ -758,6 +759,35 @@ func (t *TextView) GetRegionText(regionID string) string {
 	}
 
 	return regionText.String()
+}
+
+// GetRegionIDs returns the region IDs within the textview.
+func (t *TextView) GetRegionIDs() []string {
+	regionIDs := []string{}
+
+	positions := make(map[int]string)
+	for region, number := range t.regions {
+		line := t.lineIndex[number]
+
+		regions, ok := line.regions[region]
+		if !ok {
+			continue
+		}
+
+		positions[regions[0]] = region
+	}
+
+	ids := []int{}
+	for pos := range positions {
+		ids = append(ids, pos)
+	}
+	sort.Ints(ids)
+
+	for _, id := range ids {
+		regionIDs = append(regionIDs, positions[id])
+	}
+
+	return regionIDs
 }
 
 // Focus is called when this primitive receives focus.
