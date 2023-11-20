@@ -1218,10 +1218,14 @@ func (t *TextArea) Draw(screen tcell.Screen) {
 		}
 	}()
 
-	// Placeholder.
-	if t.length == 0 && len(t.placeholder) > 0 {
-		t.drawPlaceholder(screen, x, y, width, height)
+	// No text / placeholder.
+	if t.length == 0 {
 		t.lastHeight, t.lastWidth = height, width
+		t.cursor.row, t.cursor.column, t.cursor.actualColumn, t.cursor.pos = 0, 0, 0, [3]int{1, 0, -1}
+		t.rowOffset, t.columnOffset = 0, 0
+		if len(t.placeholder) > 0 {
+			t.drawPlaceholder(screen, x, y, width, height)
+		}
 		return // We're done already.
 	}
 
@@ -1443,7 +1447,7 @@ func (t *TextArea) findCursor(clamp bool, startRow int) {
 		t.cursor.column = t.cursor.actualColumn
 	}()
 
-	if !clamp && t.cursor.row >= 0 {
+	if !clamp && t.cursor.row >= 0 || t.lastWidth <= 0 {
 		return // Nothing to do.
 	}
 
