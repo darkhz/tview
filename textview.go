@@ -1,7 +1,6 @@
 package tview
 
 import (
-	"sort"
 	"math"
 	"strings"
 	"sync"
@@ -763,28 +762,18 @@ func (t *TextView) GetRegionText(regionID string) string {
 
 // GetRegionIDs returns the region IDs within the textview.
 func (t *TextView) GetRegionIDs() []string {
-	regionIDs := []string{}
+	var (
+		state     *stepState
+		regionIDs []string
+	)
 
-	positions := make(map[int]string)
-	for region, number := range t.regions {
-		line := t.lineIndex[number]
-
-		regions, ok := line.regions[region]
-		if !ok {
-			continue
+	text := t.GetText(false)
+	for len(text) > 0 {
+		_, text, state = step(text, state, stepOptionsRegion)
+		if state.region != "" {
+			regionIDs = append(regionIDs, state.region)
+			state.region = ""
 		}
-
-		positions[regions[0]] = region
-	}
-
-	ids := []int{}
-	for pos := range positions {
-		ids = append(ids, pos)
-	}
-	sort.Ints(ids)
-
-	for _, id := range ids {
-		regionIDs = append(regionIDs, positions[id])
 	}
 
 	return regionIDs
