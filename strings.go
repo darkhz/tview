@@ -1,6 +1,7 @@
 package tview
 
 import (
+	"fmt"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -625,6 +626,53 @@ func Escape(text string) string {
 // Unescape unescapes text previously escaped with [Escape].
 func Unescape(text string) string {
 	return unescapePattern.ReplaceAllString(text, "$1]")
+}
+
+// ReplaceRegionStyles replaces style tags within text regions.
+func ReplaceRegionStyles(text string, getStyle func(region string) string) string {
+	var (
+		str, regionText strings.Builder
+		state           *stepState
+		region          string
+		escapedState    int
+	)
+
+	for len(text) > 0 {
+		var c string
+		c, text, state = step(text, state, stepOptionsStyle)
+
+		if escapedState > 0 && state.escapedTagState == 0 {
+			c = "[]"
+		}
+		escapedState = state.escapedTagState
+
+		if region != "" && region != state.region {
+			if regionText.Len() > 0 {
+				fmt.Fprintf(&str, "[\"%s\"]", region)
+
+				text := regionText.String()
+				if tag := getStyle(region); tag != "" {
+					fmt.Fprintf(&str, "%s%s[-:-:-]", tag, text)
+				} else {
+					str.WriteString(text)
+				}
+
+				str.WriteString("[\"\"]")
+
+				regionText.Reset()
+				region = state.region
+			}
+		}
+		if state.region == "" && region == "" {
+			str.WriteString(c)
+			continue
+		}
+
+		region = state.region
+		regionText.WriteString(c)
+	}
+
+	return str.String()
 }
 
 // stripTags strips style tags from the given string. (Region tags are not
