@@ -105,6 +105,12 @@ type Form struct {
 
 	// An optional function which is called when the user hits Escape.
 	cancel func()
+
+	// An optional function which is called when form items are drawn.
+	itemfunc func(item FormItem, labelWidth int)
+
+	// An optional function which is called when form buttons are drawn.
+	buttonfunc func(button *Button)
 }
 
 // NewForm returns a new form.
@@ -500,6 +506,20 @@ func (f *Form) SetCancelFunc(callback func()) *Form {
 	return f
 }
 
+// SetItemAttributesFunc sets a handler which is called when each form item is drawn.
+func (f *Form) SetItemAttributesFunc(callback func(item FormItem, labelWidth int)) *Form {
+	f.itemfunc = callback
+
+	return f
+}
+
+// SetButtonAttributesFunc sets a handler which is called when each form item is drawn.
+func (f *Form) SetButtonAttributesFunc(callback func(button *Button)) *Form {
+	f.buttonfunc = callback
+
+	return f
+}
+
 // Draw draws this primitive onto the screen.
 func (f *Form) Draw(screen tcell.Screen) {
 	f.Box.DrawForSubclass(screen, f)
@@ -570,13 +590,17 @@ func (f *Form) Draw(screen tcell.Screen) {
 		if x+itemWidth >= rightLimit {
 			itemWidth = rightLimit - x
 		}
-		item.SetFormAttributes(
-			labelWidth,
-			f.labelColor,
-			f.backgroundColor,
-			f.fieldTextColor,
-			f.fieldBackgroundColor,
-		)
+		if f.itemfunc != nil {
+			f.itemfunc(item, labelWidth)
+		} else {
+			item.SetFormAttributes(
+				labelWidth,
+				f.labelColor,
+				f.backgroundColor,
+				f.fieldTextColor,
+				f.fieldBackgroundColor,
+			)
+		}
 
 		// Save position.
 		positions[index].x = x
@@ -638,9 +662,13 @@ func (f *Form) Draw(screen tcell.Screen) {
 		if buttonWidth > space {
 			buttonWidth = space
 		}
-		button.SetStyle(f.buttonStyle).
-			SetActivatedStyle(f.buttonActivatedStyle).
-			SetDisabledStyle(f.buttonDisabledStyle)
+		if f.buttonfunc != nil {
+			f.buttonfunc(button)
+		} else {
+			button.SetStyle(f.buttonStyle).
+				SetActivatedStyle(f.buttonActivatedStyle).
+				SetDisabledStyle(f.buttonDisabledStyle)
+		}
 
 		buttonIndex := index + len(f.items)
 		positions[buttonIndex].x = x
