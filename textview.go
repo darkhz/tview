@@ -1,6 +1,7 @@
 package tview
 
 import (
+	"math"
 	"strings"
 	"sync"
 
@@ -841,15 +842,22 @@ func (t *TextView) resetIndex() {
 // parseAhead parses the text buffer starting at the last line in
 // [TextView.lineIndex] until either the end of the buffer or until stop returns
 // true for the last complete line that was parsed. If wrapping is enabled,
-// width will be used as the available screen width.
+// width will be used as the available screen width. If width is 0, it is
+// assumed that there is no wrapping. This can happen when this function is
+// called before the first time [TextView.Draw] is called.
 //
 // There is no guarantee that stop will ever be called.
 //
 // The function adds entries to the [TextView.lineIndex] slice and the
 // [TextView.regions] map and adjusts [TextView.longestLine].
 func (t *TextView) parseAhead(width int, stop func(lineNumber int, line *textViewLine) bool) {
-	if t.text.Len() == 0 || width == 0 {
+	if t.text.Len() == 0 {
 		return // No text. Nothing to parse.
+	}
+
+	// If width is 0, make it infinite.
+	if width == 0 {
+		width = math.MaxInt
 	}
 
 	// What kind of tags do we scan for?
@@ -1363,6 +1371,7 @@ func (t *TextView) MouseHandler() func(action MouseAction, event *tcell.EventMou
 			return false, nil
 		}
 
+		rectX, rectY, width, height := t.GetInnerRect()
 		switch action {
 		case MouseLeftDown:
 			setFocus(t)
@@ -1370,7 +1379,6 @@ func (t *TextView) MouseHandler() func(action MouseAction, event *tcell.EventMou
 		case MouseLeftClick:
 			if t.regionTags {
 				// Find a region to highlight.
-				rectX, rectY, _, _ := t.GetInnerRect()
 				x -= rectX
 				y -= rectY
 				var highlightedID string
@@ -1391,11 +1399,26 @@ func (t *TextView) MouseHandler() func(action MouseAction, event *tcell.EventMou
 			}
 			consumed = true
 		case MouseScrollUp:
+			if !t.scrollable {
+				break
+			}
 			t.trackEnd = false
 			t.lineOffset--
 			consumed = true
 		case MouseScrollDown:
+			if !t.scrollable {
+				break
+			}
 			t.lineOffset++
+			if len(t.lineIndex)-t.lineOffset < height {
+				// If we scroll to the end, turn on tracking.
+				t.parseAhead(width, func(lineNumber int, line *textViewLine) bool {
+					return len(t.lineIndex)-t.lineOffset < height
+				})
+				if len(t.lineIndex)-t.lineOffset < height {
+					t.trackEnd = true
+				}
+			}
 			consumed = true
 		}
 
