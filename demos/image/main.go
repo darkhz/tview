@@ -9,7 +9,7 @@ import (
 	"image/png"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/darkhz/tview"
 )
 
 const (
