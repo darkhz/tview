@@ -93,13 +93,11 @@ func (a *ansi) Write(text []byte) (int, error) {
 					var background, foreground string
 					params := a.csiParameter.String()
 					fields := strings.Split(params, ";")
-					if len(params) == 0 || len(fields) == 1 && fields[0] == "0" {
+					if len(params) == 0 || fields[0] == "" || fields[0] == "0" {
 						// Reset.
-						a.attributes = ""
-						if _, err := a.buffer.WriteString("[-:-:-]"); err != nil {
-							return 0, err
-						}
-						break
+						foreground = "-"
+						background = "-"
+						a.attributes = "-"
 					}
 					lookupColor := func(colorNumber int) string {
 						if colorNumber < 0 || colorNumber > 15 {
@@ -135,6 +133,10 @@ func (a *ansi) Write(text []byte) (int, error) {
 							if !strings.ContainsRune(a.attributes, 'd') {
 								a.attributes += "d"
 							}
+						case "3", "03":
+							if !strings.ContainsRune(a.attributes, 'i') {
+								a.attributes += "i"
+							}
 						case "4", "04":
 							if !strings.ContainsRune(a.attributes, 'u') {
 								a.attributes += "u"
@@ -143,11 +145,23 @@ func (a *ansi) Write(text []byte) (int, error) {
 							if !strings.ContainsRune(a.attributes, 'l') {
 								a.attributes += "l"
 							}
+						case "7", "07":
+							if !strings.ContainsRune(a.attributes, 'r') {
+								a.attributes += "r"
+							}
+						case "9", "09":
+							if !strings.ContainsRune(a.attributes, 's') {
+								a.attributes += "s"
+							}
 						case "22":
 							if i := strings.IndexRune(a.attributes, 'b'); i >= 0 {
 								a.attributes = a.attributes[:i] + a.attributes[i+1:]
 							}
 							if i := strings.IndexRune(a.attributes, 'd'); i >= 0 {
+								a.attributes = a.attributes[:i] + a.attributes[i+1:]
+							}
+						case "23":
+							if i := strings.IndexRune(a.attributes, 'i'); i >= 0 {
 								a.attributes = a.attributes[:i] + a.attributes[i+1:]
 							}
 						case "24":
@@ -156,6 +170,14 @@ func (a *ansi) Write(text []byte) (int, error) {
 							}
 						case "25":
 							if i := strings.IndexRune(a.attributes, 'l'); i >= 0 {
+								a.attributes = a.attributes[:i] + a.attributes[i+1:]
+							}
+						case "27":
+							if i := strings.IndexRune(a.attributes, 'r'); i >= 0 {
+								a.attributes = a.attributes[:i] + a.attributes[i+1:]
+							}
+						case "29":
+							if i := strings.IndexRune(a.attributes, 's'); i >= 0 {
 								a.attributes = a.attributes[:i] + a.attributes[i+1:]
 							}
 						case "30", "31", "32", "33", "34", "35", "36", "37":
@@ -208,6 +230,9 @@ func (a *ansi) Write(text []byte) (int, error) {
 						}
 					}
 					var colon string
+					if len(a.attributes) > 1 && a.attributes[0] == '-' {
+						a.attributes = a.attributes[1:]
+					}
 					if len(a.attributes) > 0 {
 						colon = ":"
 					}

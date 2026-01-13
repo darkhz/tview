@@ -1,6 +1,7 @@
 package tview
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,6 +100,7 @@ type InputField struct {
 		main       tcell.Style
 		selected   tcell.Style
 		background tcell.Color
+		useTags    bool
 	}
 
 	// An optional function which is called when the user selects an
@@ -125,7 +127,7 @@ type InputField struct {
 	finished func(tcell.Key)
 }
 
-// NewInputField returns a new input field.
+// NewInputField returns a new [InputField].
 func NewInputField() *InputField {
 	i := &InputField{
 		Box:      NewBox(),
@@ -138,9 +140,11 @@ func NewInputField() *InputField {
 	})
 	i.textArea.textStyle = tcell.StyleDefault.Background(Styles.ContrastBackgroundColor).Foreground(Styles.PrimaryTextColor)
 	i.textArea.placeholderStyle = tcell.StyleDefault.Background(Styles.ContrastBackgroundColor).Foreground(Styles.ContrastSecondaryTextColor)
-	i.autocompleteStyles.main = tcell.StyleDefault.Foreground(Styles.PrimitiveBackgroundColor)
+	i.autocompleteStyles.main = tcell.StyleDefault.Background(Styles.MoreContrastBackgroundColor).Foreground(Styles.PrimitiveBackgroundColor)
 	i.autocompleteStyles.selected = tcell.StyleDefault.Background(Styles.PrimaryTextColor).Foreground(Styles.PrimitiveBackgroundColor)
 	i.autocompleteStyles.background = Styles.MoreContrastBackgroundColor
+	i.autocompleteStyles.useTags = true
+	i.Box.Primitive = i
 	return i
 }
 
@@ -242,12 +246,19 @@ func (i *InputField) GetPlaceholderStyle() tcell.Style {
 }
 
 // SetAutocompleteStyles sets the colors and style of the autocomplete entries.
-// For details, see List.SetMainTextStyle(), List.SetSelectedStyle(), and
-// Box.SetBackgroundColor().
+// For details, see [List.SetMainTextStyle], [List.SetSelectedStyle], and
+// [Box.SetBackgroundColor].
 func (i *InputField) SetAutocompleteStyles(background tcell.Color, main, selected tcell.Style) *InputField {
 	i.autocompleteStyles.background = background
 	i.autocompleteStyles.main = main
 	i.autocompleteStyles.selected = selected
+	return i
+}
+
+// SetAutocompleteUseTags sets whether or not the autocomplete entries may
+// contain style tags affecting their appearance. The default is true.
+func (i *InputField) SetAutocompleteUseTags(useTags bool) *InputField {
+	i.autocompleteStyles.useTags = useTags
 	return i
 }
 
@@ -281,6 +292,11 @@ func (i *InputField) SetDisabled(disabled bool) FormItem {
 		i.finished(-1)
 	}
 	return i
+}
+
+// GetDisabled returns whether or not the item is disabled / read-only.
+func (i *InputField) GetDisabled() bool {
+	return i.textArea.GetDisabled()
 }
 
 // SetMaskCharacter sets a character that masks user input on a screen. A value
@@ -358,17 +374,26 @@ func (i *InputField) Autocomplete() *InputField {
 		i.autocompleteList.ShowSecondaryText(false).
 			SetMainTextStyle(i.autocompleteStyles.main).
 			SetSelectedStyle(i.autocompleteStyles.selected).
+			SetUseStyleTags(i.autocompleteStyles.useTags, i.autocompleteStyles.useTags).
 			SetHighlightFullLine(true).
 			SetBackgroundColor(i.autocompleteStyles.background)
 	}
 
 	// Fill it with the entries.
+	currentIndex := i.autocompleteList.GetCurrentItem()
+	var currentSelection string
+	if currentIndex >= 0 && currentIndex < i.autocompleteList.GetItemCount() {
+		currentSelection, _ = i.autocompleteList.GetItemText(currentIndex)
+	}
 	currentEntry := -1
-	suffixLength := 9999 // I'm just waiting for the day somebody opens an issue with this number being too small.
+	suffixLength := math.MaxInt
 	i.autocompleteList.Clear()
 	for index, entry := range entries {
 		i.autocompleteList.AddItem(entry, "", 0, nil)
-		if strings.HasPrefix(entry, text) && len(entry)-len(text) < suffixLength {
+		if currentSelection != "" && entry == currentSelection {
+			currentEntry = index
+		}
+		if currentSelection == "" && strings.HasPrefix(entry, text) && len(entry)-len(text) < suffixLength {
 			currentEntry = index
 			suffixLength = len(text) - len(entry)
 		}
@@ -433,17 +458,22 @@ func (i *InputField) Focus(delegate func(p Primitive)) {
 		return
 	}
 
-	i.Box.Focus(delegate)
+	delegate(i.textArea)
 }
 
-// HasFocus returns whether or not this primitive has focus.
-func (i *InputField) HasFocus() bool {
-	return i.textArea.HasFocus() || i.Box.HasFocus()
+// focusChain implements the [Primitive]'s focusChain method.
+func (i *InputField) focusChain(chain *[]Primitive) bool {
+	if hasFocus := i.textArea.focusChain(chain); hasFocus {
+		if chain != nil {
+			*chain = append(*chain, i)
+		}
+		return true
+	}
+	return i.Box.focusChain(chain)
 }
 
 // Blur is called when this primitive loses focus.
 func (i *InputField) Blur() {
-	i.textArea.Blur()
 	i.Box.Blur()
 	i.autocompleteList = nil // Hide the autocomplete drop-down.
 }
@@ -477,7 +507,7 @@ func (i *InputField) Draw(screen tcell.Screen) {
 	// Draw autocomplete list.
 	i.autocompleteListMutex.Lock()
 	defer i.autocompleteListMutex.Unlock()
-	if i.autocompleteList != nil {
+	if i.autocompleteList != nil && i.HasFocus() {
 		// How much space do we need?
 		lheight := i.autocompleteList.GetItemCount()
 		lwidth := 0
@@ -518,14 +548,11 @@ func (i *InputField) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 		var skipAutocomplete bool
 		currentText := i.textArea.GetText()
 		defer func() {
-			newText := i.textArea.GetText()
-			if newText != currentText {
-				if !skipAutocomplete {
-					i.Autocomplete()
-				}
-				if i.changed != nil {
-					i.changed(newText)
-				}
+			if skipAutocomplete {
+				return
+			}
+			if i.textArea.GetText() != currentText {
+				i.Autocomplete()
 			}
 		}()
 
@@ -625,14 +652,11 @@ func (i *InputField) MouseHandler() func(action MouseAction, event *tcell.EventM
 		var skipAutocomplete bool
 		currentText := i.GetText()
 		defer func() {
-			newText := i.GetText()
-			if newText != currentText {
-				if !skipAutocomplete {
-					i.Autocomplete()
-				}
-				if i.changed != nil {
-					i.changed(newText)
-				}
+			if skipAutocomplete {
+				return
+			}
+			if i.textArea.GetText() != currentText {
+				i.Autocomplete()
 			}
 		}()
 
@@ -668,6 +692,12 @@ func (i *InputField) MouseHandler() func(action MouseAction, event *tcell.EventM
 
 		// Forward mouse event to the text area.
 		consumed, capture = i.textArea.MouseHandler()(action, event, setFocus)
+
+		// Focus in any case.
+		if action == MouseLeftDown && !consumed {
+			setFocus(i)
+			consumed = true
+		}
 
 		return
 	})

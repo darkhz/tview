@@ -33,7 +33,7 @@ type Checkbox struct {
 	// The style of the checked checkbox.
 	checkedStyle tcell.Style
 
-	// Teh style of the checkbox when it is currently focused.
+	// The style of the checkbox when it is currently focused.
 	focusStyle tcell.Style
 
 	// The string used to display an unchecked box.
@@ -56,9 +56,9 @@ type Checkbox struct {
 	finished func(tcell.Key)
 }
 
-// NewCheckbox returns a new input field.
+// NewCheckbox returns a new [Checkbox].
 func NewCheckbox() *Checkbox {
-	return &Checkbox{
+	c := &Checkbox{
 		Box:             NewBox(),
 		labelStyle:      tcell.StyleDefault.Foreground(Styles.SecondaryTextColor),
 		uncheckedStyle:  tcell.StyleDefault.Background(Styles.ContrastBackgroundColor).Foreground(Styles.PrimaryTextColor),
@@ -67,6 +67,8 @@ func NewCheckbox() *Checkbox {
 		uncheckedString: " ",
 		checkedString:   "X",
 	}
+	c.Box.Primitive = c
+	return c
 }
 
 // SetChecked sets the state of the checkbox. This also triggers the "changed"
@@ -196,6 +198,11 @@ func (c *Checkbox) SetDisabled(disabled bool) FormItem {
 		c.finished(-1)
 	}
 	return c
+}
+
+// GetDisabled returns whether or not the item is disabled / read-only.
+func (c *Checkbox) GetDisabled() bool {
+	return c.disabled
 }
 
 // SetChangedFunc sets a handler which is called when the checked state of this

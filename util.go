@@ -19,7 +19,10 @@ const (
 
 var (
 	// Regular expression used to escape style/region tags.
-	nonEscapePattern = regexp.MustCompile(`(\[[a-zA-Z0-9_,;: \-\."#]+\[*)\]`)
+	escapePattern = regexp.MustCompile(`(\[[a-zA-Z0-9_,;: \-\."#]+\[*)\]`)
+
+	// Regular expression used to unescape escaped style/region tags.
+	unescapePattern = regexp.MustCompile(`(\[[a-zA-Z0-9_,;: \-\."#]+\[*)\[\]`)
 
 	// The number of colors available in the terminal.
 	availableColors = 256
@@ -48,7 +51,7 @@ func Print(screen tcell.Screen, text string, x, y, maxWidth, align int, color tc
 	return end - start, width
 }
 
-// printWithStyle works like Print() but it takes a style instead of just a
+// printWithStyle works like [Print] but it takes a style instead of just a
 // foreground color. The skipWidth parameter specifies the number of cells
 // skipped at the beginning of the text. It returns the start index, end index
 // (exclusively), and screen width of the text actually printed. If
@@ -66,46 +69,43 @@ func printWithStyle(screen tcell.Screen, text string, x, y, skipWidth, maxWidth,
 	}
 
 	// Skip beginning and measure width.
-	var (
-		state     *stepState
-		textWidth int
-	)
+	var textWidth int
+	state := &stepState{
+		unisegState: -1,
+		style:       style,
+	}
+	newState := *state
 	str := text
 	for len(str) > 0 {
 		_, str, state = step(str, state, stepOptionsStyle)
 		if skipWidth > 0 {
 			skipWidth -= state.Width()
-			if skipWidth <= 0 {
-				text = str
-				style = state.Style()
-			}
+			text = str
+			newState = *state
 			start += state.GrossLength()
 		} else {
 			textWidth += state.Width()
 		}
 	}
+	state = &newState
 
 	// Reduce all alignments to AlignLeft.
 	if align == AlignRight {
 		// Chop off characters on the left until it fits.
-		state = nil
 		for len(text) > 0 && textWidth > maxWidth {
 			_, text, state = step(text, state, stepOptionsStyle)
 			textWidth -= state.Width()
 			start += state.GrossLength()
-			style = state.Style()
 		}
 		x, maxWidth = x+maxWidth-textWidth, textWidth
 	} else if align == AlignCenter {
 		// Chop off characters on the left until it fits.
-		state = nil
 		subtracted := (textWidth - maxWidth) / 2
 		for len(text) > 0 && subtracted > 0 {
 			_, text, state = step(text, state, stepOptionsStyle)
 			subtracted -= state.Width()
 			textWidth -= state.Width()
 			start += state.GrossLength()
-			style = state.Style()
 		}
 		if textWidth < maxWidth {
 			x, maxWidth = x+maxWidth/2-textWidth/2, textWidth
@@ -115,10 +115,6 @@ func printWithStyle(screen tcell.Screen, text string, x, y, skipWidth, maxWidth,
 	// Draw left-aligned text.
 	end = start
 	rightBorder := x + maxWidth
-	state = &stepState{
-		unisegState: -1,
-		style:       style,
-	}
 	for len(text) > 0 && x < rightBorder && x < totalWidth {
 		var c string
 		c, text, state = step(text, state, stepOptionsStyle)

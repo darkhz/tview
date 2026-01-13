@@ -32,11 +32,12 @@ type Pages struct {
 	changed func()
 }
 
-// NewPages returns a new Pages object.
+// NewPages returns a new [Pages] object.
 func NewPages() *Pages {
 	p := &Pages{
 		Box: NewBox(),
 	}
+	p.Box.Primitive = p
 	return p
 }
 
@@ -52,14 +53,32 @@ func (p *Pages) GetPageCount() int {
 	return len(p.pages)
 }
 
+// GetPageNames returns all page names ordered from front to back,
+// optionally limited to visible pages.
+func (p *Pages) GetPageNames(visibleOnly bool) []string {
+	var names []string
+	for index := len(p.pages) - 1; index >= 0; index-- {
+		if !visibleOnly || p.pages[index].Visible {
+			names = append(names, p.pages[index].Name)
+		}
+	}
+	return names
+}
+
+// Clear removes all pages.
+func (p *Pages) Clear() *Pages {
+	p.pages = nil
+	return p
+}
+
 // AddPage adds a new page with the given name and primitive. If there was
 // previously a page with the same name, it is overwritten. Leaving the name
-// empty may cause conflicts in other functions so always specify a non-empty
-// name.
+// empty may cause conflicts in other functions so you should always specify a
+// non-empty name.
 //
 // Visible pages will be drawn in the order they were added (unless that order
 // was changed in one of the other functions). If "resize" is set to true, the
-// primitive will be set to the size available to the Pages primitive whenever
+// primitive will be set to the size available to the [Pages] primitive whenever
 // the pages are drawn.
 func (p *Pages) AddPage(name string, item Primitive, resize, visible bool) *Pages {
 	hasFocus := p.HasFocus()
@@ -236,21 +255,32 @@ func (p *Pages) GetFrontPage() (name string, item Primitive) {
 	return
 }
 
-// HasFocus returns whether or not this primitive has focus.
-func (p *Pages) HasFocus() bool {
+// GetPage returns the page with the given name. If no such page exists, nil is
+// returned.
+func (p *Pages) GetPage(name string) Primitive {
 	for _, page := range p.pages {
-		if page.Item.HasFocus() {
+		if page.Name == name {
+			return page.Item
+		}
+	}
+	return nil
+}
+
+// focusChain implements the [Primitive]'s focusChain method.
+func (p *Pages) focusChain(chain *[]Primitive) bool {
+	for _, page := range p.pages {
+		if hasFocus := page.Item.focusChain(chain); hasFocus {
+			if chain != nil {
+				*chain = append(*chain, p)
+			}
 			return true
 		}
 	}
-	return p.Box.HasFocus()
+	return p.Box.focusChain(chain)
 }
 
 // Focus is called by the application when the primitive receives focus.
 func (p *Pages) Focus(delegate func(p Primitive)) {
-	if delegate == nil {
-		return // We cannot delegate so we cannot focus.
-	}
 	p.setFocus = delegate
 	var topItem Primitive
 	for _, page := range p.pages {

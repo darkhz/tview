@@ -1,6 +1,7 @@
 package tview
 
 import (
+	"math"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -92,9 +93,6 @@ type textAreaUndoItem struct {
 // TextArea implements a simple text editor for multi-line text. Multi-color
 // text is not supported. Word-wrapping is enabled by default but can be turned
 // off or be changed to character-wrapping.
-//
-// At this point, a text area cannot be added to a [Form]. This will be added in
-// the future.
 //
 // # Navigation and Editing
 //
@@ -348,7 +346,7 @@ type TextArea struct {
 	finished func(tcell.Key)
 }
 
-// NewTextArea returns a new text area. Use [TextArea.SetText] to set the
+// NewTextArea returns a new [TextArea]. Use [TextArea.SetText] to set the
 // initial text.
 func NewTextArea() *TextArea {
 	t := &TextArea{
@@ -363,6 +361,8 @@ func NewTextArea() *TextArea {
 		lastAction:       taActionOther,
 		minCursorPrefix:  minCursorPrefixDefault,
 		minCursorSuffix:  minCursorSuffixDefault,
+		lastWidth:        math.MaxInt / 2, // We need this so some functions work before the first draw.
+		lastHeight:       1,
 	}
 	t.editText.Grow(editBufferMinCap)
 	t.spans[0] = textAreaSpan{previous: -1, next: 1}
@@ -370,7 +370,7 @@ func NewTextArea() *TextArea {
 	t.cursor.pos = [3]int{1, 0, -1}
 	t.selectionStart = t.cursor
 	t.SetClipboard(nil, nil)
-
+	t.Box.Primitive = t
 	return t
 }
 
@@ -702,7 +702,8 @@ RowLoop:
 		for {
 			if pos[0] == next[0] {
 				if start >= index+lineIndex && start < index+lineIndex+next[1]-pos[1] ||
-					end >= index+lineIndex && end < index+lineIndex+next[1]-pos[1] {
+					end >= index+lineIndex && end < index+lineIndex+next[1]-pos[1] ||
+					next[0] == 1 && (start == t.length || end == t.length) { // Special case for the end of the text.
 					break
 				}
 				index += lineIndex + next[1] - pos[1]
@@ -714,7 +715,8 @@ RowLoop:
 					length = -length
 				}
 				if start >= index+lineIndex && start < index+lineIndex+length-pos[1] ||
-					end >= index+lineIndex && end < index+lineIndex+length-pos[1] {
+					end >= index+lineIndex && end < index+lineIndex+length-pos[1] ||
+					next[0] == 1 && (start == t.length || end == t.length) { // Special case for the end of the text.
 					break
 				}
 				lineIndex += length - pos[1]
@@ -743,6 +745,7 @@ RowLoop:
 			index += len(cluster)
 			column += width
 		}
+		row++
 	}
 
 	if t.cursor.row < 0 {

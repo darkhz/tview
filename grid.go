@@ -12,7 +12,7 @@ type gridItem struct {
 	Row, Column                 int       // The top-left grid cell where the item is placed.
 	Width, Height               int       // The number of rows and columns the item occupies.
 	MinGridWidth, MinGridHeight int       // The minimum grid width/height for which this item is visible.
-	Focus                       bool      // Whether or not this item attracts the layout's focus.
+	Focus                       bool      // Whether or not this item attracts the layout's focus. Only applicable for the first item for which this is set to true.
 
 	visible    bool // Whether or not this item was visible the last time the grid was drawn.
 	x, y, w, h int  // The last position of the item relative to the top-left corner of the grid. Undefined if visible is false.
@@ -60,10 +60,10 @@ type Grid struct {
 
 // NewGrid returns a new grid-based layout container with no initial primitives.
 //
-// Note that Box, the superclass of Grid, will be transparent so that any grid
+// Note that [Box], the superclass of Grid, will be transparent so that any grid
 // areas not covered by any primitives will leave their background unchanged. To
-// clear a Grid's background before any items are drawn, reset its Box to one
-// with the desired color:
+// clear a [Grid]'s background before any items are drawn, reset its embedded
+// [Box]:
 //
 //	grid.Box = NewBox()
 func NewGrid() *Grid {
@@ -72,6 +72,7 @@ func NewGrid() *Grid {
 	}
 	g.Box = NewBox()
 	g.Box.dontClear = true
+	g.Box.Primitive = g
 	return g
 }
 
@@ -256,14 +257,20 @@ func (g *Grid) Focus(delegate func(p Primitive)) {
 	g.Box.Focus(delegate)
 }
 
-// HasFocus returns whether or not this primitive has focus.
-func (g *Grid) HasFocus() bool {
+// focusChain implements the [Primitive]'s focusChain method.
+func (g *Grid) focusChain(chain *[]Primitive) bool {
 	for _, item := range g.items {
-		if item.visible && item.Item.HasFocus() {
+		if !item.visible {
+			continue
+		}
+		if hasFocus := item.Item.focusChain(chain); hasFocus {
+			if chain != nil {
+				*chain = append(*chain, g)
+			}
 			return true
 		}
 	}
-	return g.Box.HasFocus()
+	return g.Box.focusChain(chain)
 }
 
 // Draw draws this primitive onto the screen.
@@ -281,12 +288,13 @@ ItemLoop:
 			continue // Disqualified.
 		}
 
-		// Check for overlaps.
+		// Check for overlaps and multiple layouts of the same item.
 		for index, existing := range items {
-			// Do they overlap?
-			if item.Row >= existing.Row+existing.Height || item.Row+item.Height <= existing.Row ||
-				item.Column >= existing.Column+existing.Width || item.Column+item.Width <= existing.Column {
-				break // They don't.
+			// Do they overlap or are identical?
+			if item.Item != existing.Item &&
+				(item.Row >= existing.Row+existing.Height || item.Row+item.Height <= existing.Row ||
+					item.Column >= existing.Column+existing.Width || item.Column+item.Width <= existing.Column) {
+				continue // They don't and aren't.
 			}
 
 			// What's their minimum size?
@@ -303,7 +311,7 @@ ItemLoop:
 			if itemMin < existingMin {
 				continue ItemLoop // This one isn't. Drop it.
 			}
-			items[index] = item
+			items[index] = item // This one is. Replace the other.
 			continue ItemLoop
 		}
 
@@ -490,20 +498,6 @@ ItemLoop:
 			break
 		}
 		offsetX += width + add
-	}
-
-	// Line up the last row/column with the end of the available area.
-	var border int
-	if g.borders {
-		border = 1
-	}
-	last := len(rowPos) - 1
-	if rowPos[last]+rowHeight[last]+border-offsetY < height {
-		offsetY = rowPos[last] - height + rowHeight[last] + border
-	}
-	last = len(columnPos) - 1
-	if columnPos[last]+columnWidth[last]+border-offsetX < width {
-		offsetX = columnPos[last] - width + columnWidth[last] + border
 	}
 
 	// The focused item must be within the visible area.

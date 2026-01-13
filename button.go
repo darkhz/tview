@@ -34,17 +34,19 @@ type Button struct {
 	exit func(tcell.Key)
 }
 
-// NewButton returns a new input field.
+// NewButton returns a new [Button].
 func NewButton(label string) *Button {
 	box := NewBox()
 	box.SetRect(0, 0, TaggedStringWidth(label)+4, 1)
-	return &Button{
+	b := &Button{
 		Box:            box,
 		text:           label,
 		style:          tcell.StyleDefault.Background(Styles.ContrastBackgroundColor).Foreground(Styles.PrimaryTextColor),
 		activatedStyle: tcell.StyleDefault.Background(Styles.PrimaryTextColor).Foreground(Styles.InverseTextColor),
 		disabledStyle:  tcell.StyleDefault.Background(Styles.ContrastBackgroundColor).Foreground(Styles.ContrastSecondaryTextColor),
 	}
+	b.Box.Primitive = b
+	return b
 }
 
 // SetLabel sets the button text.
@@ -106,9 +108,15 @@ func (b *Button) SetDisabled(disabled bool) *Button {
 	return b
 }
 
-// IsDisabled returns whether or not the button is disabled.
-func (b *Button) IsDisabled() bool {
+// GetDisabled returns whether or not the button is disabled.
+func (b *Button) GetDisabled() bool {
 	return b.disabled
+}
+
+// IsDisabled is an alias for [Button.GetDisabled]. Only here for backwards
+// compatibility.
+func (b *Button) IsDisabled() bool {
+	return b.GetDisabled()
 }
 
 // SetSelectedFunc sets a handler which is called when the button was selected.
@@ -136,18 +144,10 @@ func (b *Button) Draw(screen tcell.Screen) {
 	if b.disabled {
 		style = b.disabledStyle
 	}
-	_, backgroundColor, _ := style.Decompose()
 	if b.HasFocus() && !b.disabled {
 		style = b.activatedStyle
-		_, backgroundColor, _ = style.Decompose()
-
-		// Highlight button for one drawing cycle.
-		borderColor := b.GetBorderColor()
-		b.SetBorderColor(backgroundColor)
-		defer func() {
-			b.SetBorderColor(borderColor)
-		}()
 	}
+	_, backgroundColor, _ := style.Decompose()
 	b.SetBackgroundColor(backgroundColor)
 	b.Box.DrawForSubclass(screen, b)
 

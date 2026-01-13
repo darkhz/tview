@@ -31,8 +31,8 @@ const (
 type stepState struct {
 	unisegState     int         // The state of the uniseg parser.
 	boundaries      int         // Information about boundaries, as returned by uniseg.Step.
-	style           tcell.Style // The current style.
-	region          string      // The current region.
+	style           tcell.Style // The style of the returned grapheme cluster.
+	region          string      // The region of the returned grapheme cluster.
 	escapedTagState int         // States for parsing escaped tags (defined in [step]).
 	grossLength     int         // The length of the cluster, including any tags not returned.
 
@@ -92,7 +92,7 @@ func (s *stepState) Style() tcell.Style {
 // are the first grapheme cluster, the remaining string, and the new state. Pass
 // the remaining string and the returned state to the next call. If the rest
 // string is empty, parsing is complete. Call the returned state's methods for
-// boundary and width information.
+// boundary and cluster width information.
 //
 // The returned cluster may be empty if the given string consists of only
 // (parsed) tags. The boundary and width information will be meaningless in
@@ -134,7 +134,7 @@ func step(str string, state *stepState, opts stepOptions) (cluster, rest string,
 	}
 
 	// Parse tags.
-	if opts != 0 {
+	if opts != stepOptionsNone {
 		const (
 			etNone int = iota
 			etStart
@@ -173,7 +173,7 @@ func step(str string, state *stepState, opts stepOptions) (cluster, rest string,
 		if state.escapedTagState == etNone {
 			if cluster[0] == '[' {
 				// We've already opened a tag. Parse it.
-				length, style, region := parseTag(str, state)
+				length, style, region := parseTag(str, state, opts)
 				if length > 0 {
 					state.style = style
 					state.region = region
@@ -193,7 +193,7 @@ func step(str string, state *stepState, opts stepOptions) (cluster, rest string,
 			if len(rest) > 0 && rest[0] == '[' {
 				// A tag might follow the cluster. If so, we need to fix the state
 				// for the boundaries to be correct.
-				if length, _, _ := parseTag(rest, state); length > 0 {
+				if length, _, _ := parseTag(rest, state, opts); length > 0 {
 					if len(rest) > length {
 						_, l := utf8.DecodeRuneInString(rest[length:])
 						cluster += rest[length : length+l]
@@ -218,7 +218,11 @@ func step(str string, state *stepState, opts stepOptions) (cluster, rest string,
 // str starts with the opening bracket for the first tag. It returns the string
 // length of all valid tags (0 if the first tag is not valid) and the updated
 // style and region for valid tags (based on the provided state).
-func parseTag(str string, state *stepState) (length int, style tcell.Style, region string) {
+func parseTag(str string, state *stepState, opts stepOptions) (length int, style tcell.Style, region string) {
+	if opts == stepOptionsNone {
+		return // No tags to parse.
+	}
+
 	// Automata states for parsing tags.
 	const (
 		tagStateNone = iota
@@ -254,7 +258,6 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 	// Attribute map.
 	attrs := map[byte]tcell.AttrMask{
 		'B': tcell.AttrBold,
-		'U': tcell.AttrUnderline,
 		'I': tcell.AttrItalic,
 		'L': tcell.AttrBlink,
 		'D': tcell.AttrDim,
@@ -284,17 +287,23 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				return
 			}
 		case tagStateStart:
-			if ch == '"' { // Start of a region tag.
+			if ch == '"' && opts&stepOptionsRegion == 0 {
+				return // Region tags are not allowed.
+			} else if ch != '"' && opts&stepOptionsStyle == 0 {
+				return // Style tags are not allowed.
+			}
+			switch {
+			case ch == '"': // Start of a region tag.
 				tempStr.Reset()
 				tagState = tagStateRegionStart
-			} else if !isOneOf(ch, "#:-") { // Invalid style tag.
+			case !isOneOf(ch, "#:-"): // Invalid style tag.
 				return
-			} else if ch == '-' { // Reset foreground color.
+			case ch == '-': // Reset foreground color.
 				tStyle = tStyle.Foreground(state.initialForeground)
 				tagState = tagStateEndForeground
-			} else if ch == ':' { // No foreground color.
+			case ch == ':': // No foreground color.
 				tagState = tagStateStartBackground
-			} else {
+			default:
 				tempStr.Reset()
 				tempStr.WriteByte(ch)
 				if ch == '#' { // Numeric foreground color.
@@ -304,11 +313,12 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				}
 			}
 		case tagStateEndForeground:
-			if ch == ']' { // End of tag.
+			switch ch {
+			case ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' {
+			case ':':
 				tagState = tagStateStartBackground
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateNumericForeground:
@@ -318,14 +328,15 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				}
 				tStyle = tStyle.Foreground(tcell.GetColor(tempStr.String()))
 			}
-			if ch == ']' { // End of tag.
+			switch {
+			case ch == ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' { // Start of background color.
+			case ch == ':': // Start of background color.
 				tagState = tagStateStartBackground
-			} else if strings.IndexByte("0123456789abcdefABCDEF", ch) >= 0 { // Hex digit.
+			case strings.IndexByte("0123456789abcdefABCDEF", ch) >= 0: // Hex digit.
 				tempStr.WriteByte(ch)
 				tagState = tagStateNumericForeground
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateNameForeground:
@@ -336,26 +347,28 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				}
 				tStyle = tStyle.Foreground(tcell.ColorNames[name])
 			}
-			if !isOneOf(ch, "]:") { // Invalid tag.
+			switch {
+			case !isOneOf(ch, "]:"): // Invalid tag.
 				return
-			} else if ch == ']' { // End of tag.
+			case ch == ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' { // Start of background color.
+			case ch == ':': // Start of background color.
 				tagState = tagStateStartBackground
-			} else { // Letters or numbers.
+			default: // Letters or numbers.
 				tempStr.WriteByte(ch)
 			}
 		case tagStateStartBackground:
-			if !isOneOf(ch, "#:-]") { // Invalid style tag.
+			switch {
+			case !isOneOf(ch, "#:-]"): // Invalid style tag.
 				return
-			} else if ch == ']' { // End of tag.
+			case ch == ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == '-' { // Reset background color.
+			case ch == '-': // Reset background color.
 				tStyle = tStyle.Background(state.initialBackground)
 				tagState = tagStateEndBackground
-			} else if ch == ':' { // No background color.
+			case ch == ':': // No background color.
 				tagState = tagStateStartAttributes
-			} else {
+			default:
 				tempStr.Reset()
 				tempStr.WriteByte(ch)
 				if ch == '#' { // Numeric background color.
@@ -365,11 +378,12 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				}
 			}
 		case tagStateEndBackground:
-			if ch == ']' { // End of tag.
+			switch ch {
+			case ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' { // Start of attributes.
+			case ':': // Start of attributes.
 				tagState = tagStateStartAttributes
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateNumericBackground:
@@ -397,28 +411,30 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				}
 				tStyle = tStyle.Background(tcell.ColorNames[name])
 			}
-			if !isOneOf(ch, "]:") { // Invalid tag.
+			switch {
+			case !isOneOf(ch, "]:"): // Invalid tag.
 				return
-			} else if ch == ']' { // End of tag.
+			case ch == ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' { // Start of background color.
+			case ch == ':': // Start of background color.
 				tagState = tagStateStartAttributes
-			} else { // Letters or numbers.
+			default: // Letters or numbers.
 				tempStr.WriteByte(ch)
 			}
 		case tagStateStartAttributes:
-			if ch == ']' { // End of tag.
+			switch {
+			case ch == ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == '-' { // Reset attributes.
+			case ch == '-': // Reset attributes.
 				tStyle = tStyle.Attributes(state.initialAttributes)
 				tagState = tagStateEndAttributes
-			} else if ch == ':' { // Start of URL.
+			case ch == ':': // Start of URL.
 				tagState = tagStateStartURL
-			} else if strings.IndexByte("buildsrBUILDSR", ch) >= 0 { // Attribute tag.
+			case strings.IndexByte("buildsrBUILDSR", ch) >= 0: // Attribute tag.
 				tempStr.Reset()
 				tempStr.WriteByte(ch)
 				tagState = tagStateAttributes
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateAttributes:
@@ -427,38 +443,46 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				_, _, a := tStyle.Decompose()
 				for index := 0; index < len(flags); index++ {
 					ch := flags[index]
-					if ch >= 'a' && ch <= 'z' {
+					switch {
+					case ch == 'u':
+						tStyle = tStyle.Underline(true)
+					case ch == 'U':
+						tStyle = tStyle.Underline(false)
+					case ch >= 'a' && ch <= 'z':
 						a |= attrs[ch-('a'-'A')]
-					} else {
+					default:
 						a &^= attrs[ch]
 					}
 				}
 				tStyle = tStyle.Attributes(a)
 			}
-			if ch == ']' { // End of tag.
+			switch {
+			case ch == ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' { // Start of URL.
+			case ch == ':': // Start of URL.
 				tagState = tagStateStartURL
-			} else if strings.IndexByte("buildsrBUILDSR", ch) >= 0 { // Attribute tag.
+			case strings.IndexByte("buildsrBUILDSR", ch) >= 0: // Attribute tag.
 				tempStr.WriteByte(ch)
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateEndAttributes:
-			if ch == ']' { // End of tag.
+			switch ch {
+			case ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == ':' { // Start of URL.
+			case ':': // Start of URL.
 				tagState = tagStateStartURL
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateStartURL:
-			if ch == ']' { // End of tag.
+			switch ch {
+			case ']': // End of tag.
 				tagState = tagStateDoneTag
-			} else if ch == '-' { // Reset URL.
+			case '-': // Reset URL.
 				tStyle = tStyle.Url("").UrlId("")
 				tagState = tagStateEndURL
-			} else { // URL character.
+			default: // URL character.
 				tempStr.Reset()
 				tempStr.WriteByte(ch)
 				tStyle = tStyle.UrlId(strconv.Itoa(int(rand.Uint32()))) // Generate a unique ID for this URL.
@@ -478,12 +502,13 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				tempStr.WriteByte(ch)
 			}
 		case tagStateRegionStart:
-			if ch == '"' { // End of region tag.
+			switch {
+			case ch == '"': // End of region tag.
 				tagState = tagStateRegionEnd
-			} else if isOneOf(ch, "_,;: -.") { // Region name.
+			case isOneOf(ch, "_,;: -."): // Region name.
 				tempStr.WriteByte(ch)
 				tagState = tagStateRegionName
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		case tagStateRegionEnd:
@@ -494,11 +519,12 @@ func parseTag(str string, state *stepState) (length int, style tcell.Style, regi
 				return
 			}
 		case tagStateRegionName:
-			if ch == '"' { // End of region tag.
+			switch {
+			case ch == '"': // End of region tag.
 				tagState = tagStateRegionEnd
-			} else if isOneOf(ch, "_,;: -.") { // Region name.
+			case isOneOf(ch, "_,;: -."): // Region name.
 				tempStr.WriteByte(ch)
-			} else { // Invalid tag.
+			default: // Invalid tag.
 				return
 			}
 		}
@@ -593,7 +619,12 @@ func WordWrap(text string, width int) (lines []string) {
 //	box.SetTitle(tview.Escape("[squarebrackets]"))
 //	fmt.Fprint(textView, tview.Escape(`["quoted"]`))
 func Escape(text string) string {
-	return nonEscapePattern.ReplaceAllString(text, "$1[]")
+	return escapePattern.ReplaceAllString(text, "$1[]")
+}
+
+// Unescape unescapes text previously escaped with [Escape].
+func Unescape(text string) string {
+	return unescapePattern.ReplaceAllString(text, "$1]")
 }
 
 // stripTags strips style tags from the given string. (Region tags are not

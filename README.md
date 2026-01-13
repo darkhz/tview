@@ -77,7 +77,6 @@ For a presentation highlighting this package, compile and run the program found 
 - [Test your typing speed in the terminal!](https://github.com/shilangyu/typer-go)
 - [TUI Client for Docker](https://github.com/skanehira/docui)
 - [SSH client using certificates signed by HashiCorp Vault](https://github.com/stephane-martin/vssh)
-- [A go terminal based pos software.](https://github.com/thebmw/y2kpos)
 - [VMware vCenter Text UI](https://github.com/thebsdbox/vctui)
 - [Bookmarks on terminal](https://github.com/tryffel/bookmarker)
 - [A UDP testing utility](https://github.com/vaelen/udp-tester)
@@ -125,6 +124,26 @@ For a presentation highlighting this package, compile and run the program found 
 - [PrivateBTC](https://github.com/adrianbrad/privatebtc)
 - [play: A TUI playground to experiment with your favorite programs, such as grep, sed, awk, jq and yq](https://github.com/paololazzari/play)
 - [gorest: Enjoy making HTTP requests in your terminal, just like you do in Insomnia.](https://github.com/NathanFirmo/gorest)
+- [Terminal-based application to listen Radio Stations around the world!](https://github.com/vergonha/garden-tui)
+- [ntui: A TUI to manage Hashicorp Nomad clusters](https://github.com/SHAPPY0/ntui)
+- [lazysql: A cross-platform TUI database management tool written in Go](https://github.com/jorgerojas26/lazysql)
+- [redis-tui: A Redis Text-based UI client in CLI](https://github.com/mylxsw/redis-tui)
+- [fen: File manager](https://github.com/kivattt/fen)
+- [sqltui: A terminal UI to operate sql and nosql databases](https://github.com/LinPr/sqltui)
+- [DBee: Simple database browser](https://github.com/murat-cileli/dbee)
+- [oddshub: A TUI for sports betting odds](https://github.com/dos-2/oddshub)
+- [envolve: Terminal based interactive app for manage enviroment variables](https://github.com/erdemkosk/envolve)
+- [zfs-file-history: Terminal UI for inspecting and restoring file history on ZFS snapshots](https://github.com/markusressel/zfs-file-history)
+- [fan2go-tui: Terminal UI for fan2go](https://github.com/markusressel/fan2go-tui)
+- [NatsDash: Terminal UI for NATS Jetstream](https://nats-dash-gui.returnzero.win/)
+- [tuissh: A terminal UI to manage ssh connections](https://github.com/linuxexam/tuissh)
+- [chiko: Ultimate Beauty TUI gRPC Client](https://github.com/felangga/chiko)
+- [kmip-explorer: Browse & manage your KMIP objects from the terminal](https://github.com/phsym/kmip-explorer)
+- [stui: Slurm TUI for managing HPC clusters](https://github.com/antvirf/stui)
+- [nerdlog: Fast, remote-first, multi-host log viewer with timeline histogram](https://github.com/dimonomid/nerdlog)
+- [lxz: A powerful DevOps graphical command-line interface tool](https://github.com/liangzhaoliang95/lxz)
+- [vaulty: Terminal UI for Azure Keyvault](https://github.com/declan-whiting/vaulty)
+- [pago: Command-line password manager](https://github.com/dbohdan/pago)
 
 ## Documentation
 
@@ -138,9 +157,9 @@ This package is based on [github.com/gdamore/tcell](https://github.com/gdamore/t
 
 [Become a Sponsor on GitHub](https://github.com/sponsors/rivo?metadata_source=tview_readme) to further this project!
 
-## Versioning and Backwards-Compatibility
+## Backwards-Compatibility
 
-I try really hard to keep this project backwards compatible. Your software should not break when you upgrade `tview`. But this also means that some of its shortcomings that were present in the initial versions will remain. In addition, at least for the time being, you won't find any version tags in this repo. The newest version should be the one to upgrade to. It has all the bugfixes and latest features. Having said that, backwards compatibility may still break when:
+I try really hard to keep this project backwards compatible. Your software should not break when you upgrade `tview`. But this also means that some of its shortcomings that were present in the initial versions will remain. Having said that, backwards compatibility may still break when:
 
 - a new version of an imported package (most likely [`tcell`](https://github.com/gdamore/tcell)) changes in such a way that forces me to make changes in `tview` as well,
 - I fix something that I consider a bug, rather than a feature, something that does not work as originally intended,

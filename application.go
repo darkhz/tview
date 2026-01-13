@@ -42,6 +42,11 @@ const (
 	MouseScrollDown
 	MouseScrollLeft
 	MouseScrollRight
+
+	// The following special value will not be provided as a mouse action but
+	// indicate that an overridden mouse event was consumed. See
+	// [Box.SetMouseCapture] for details.
+	MouseConsumed
 )
 
 // queuedUpdate represented the execution of f queued by
@@ -72,8 +77,9 @@ type Application struct {
 	// Fini(), to set a new screen (or nil to stop the application).
 	screen tcell.Screen
 
-	// The primitive which currently has the keyboard focus.
-	focus Primitive
+	// The application's title. If not empty, it will be set on every new screen
+	// that is added.
+	title string
 
 	// The root primitive to be seen on the screen.
 	root Primitive
@@ -167,7 +173,8 @@ func (a *Application) GetInputCapture() func(event *tcell.EventKey) *tcell.Event
 // the original tcell mouse event and the semantic mouse action) before they are
 // forwarded to the appropriate mouse event handler. This function can then
 // choose to forward that event (or a different one) by returning it or stop
-// the event processing by returning a nil mouse event.
+// the event processing by returning a nil mouse event. In such a case, the
+// event is considered consumed and the screen will be redrawn.
 func (a *Application) SetMouseCapture(capture func(event *tcell.EventMouse, action MouseAction) (*tcell.EventMouse, MouseAction)) *Application {
 	a.mouseCapture = capture
 	return a
@@ -181,7 +188,9 @@ func (a *Application) GetMouseCapture() func(event *tcell.EventMouse, action Mou
 
 // SetScreen allows you to provide your own tcell.Screen object. For most
 // applications, this is not needed and you should be familiar with
-// tcell.Screen when using this function.
+// tcell.Screen when using this function. As the tcell.Screen interface may
+// change in the future, you may need to update your code when this package
+// updates to a new tcell version.
 //
 // This function is typically called before the first call to Run(). Init() need
 // not be called on the screen.
@@ -205,6 +214,19 @@ func (a *Application) SetScreen(screen tcell.Screen) *Application {
 	oldScreen.Fini()
 	a.screenReplacement <- screen
 
+	return a
+}
+
+// SetTitle sets the title of the terminal window, to the extent that the
+// terminal supports it. A non-empty title will be set on every new tcell.Screen
+// that is created by or added to this application.
+func (a *Application) SetTitle(title string) *Application {
+	a.Lock()
+	defer a.Unlock()
+	a.title = title
+	if a.screen != nil {
+		a.screen.SetTitle(title)
+	}
 	return a
 }
 
@@ -244,7 +266,13 @@ func (a *Application) EnablePaste(enable bool) *Application {
 }
 
 // Run starts the application and thus the event loop. This function returns
-// when Stop() was called.
+// when [Application.Stop] was called.
+//
+// Note that while an application is running, it fully claims stdin, stdout, and
+// stderr. If you use these standard streams, they may not work as expected.
+// Consider stopping the application first or suspending it (using
+// [Application.Suspend]) if you have to interact with the standard streams, for
+// example when needing to print a call stack during a panic.
 func (a *Application) Run() error {
 	var (
 		err, appErr error
@@ -273,6 +301,9 @@ func (a *Application) Run() error {
 			a.screen.EnablePaste()
 		} else {
 			a.screen.DisablePaste()
+		}
+		if a.title != "" {
+			a.screen.SetTitle(a.title)
 		}
 	}
 
@@ -341,6 +372,9 @@ func (a *Application) Run() error {
 				screen.EnablePaste()
 			} else {
 				screen.DisablePaste()
+			}
+			if a.title != "" {
+				screen.SetTitle(a.title)
 			}
 			a.draw()
 		}
@@ -679,7 +713,7 @@ func (a *Application) draw() *Application {
 	}
 
 	// Resize if requested.
-	if fullscreen && root != nil {
+	if fullscreen { // root is not nil here.
 		width, height := screen.Size()
 		root.SetRect(0, 0, width, height)
 	}
@@ -796,22 +830,55 @@ func (a *Application) ResizeToFullScreen(p Primitive) *Application {
 // down the hierarchy (starting at the root) until a primitive handles them,
 // which per default goes towards the focused primitive.
 //
-// Blur() will be called on the previously focused primitive. Focus() will be
-// called on the new primitive.
+// Blur will be called on the previously focused [Primitive] and all of its
+// parents (including the root). Then Focus will be called on the new
+// [Primitive] and all of its parents (including the root).
 func (a *Application) SetFocus(p Primitive) *Application {
-	a.Lock()
-	if a.focus != nil {
-		a.focus.Blur()
-	}
-	a.focus = p
-	if a.screen != nil {
-		a.screen.HideCursor()
-	}
-	a.Unlock()
+	a.RLock()
+	root := a.root
+	screen := a.screen
+	a.RUnlock()
+
+	// We make a focus chain with some pre-allocated space.
+	chain := make([]Primitive, 0, 10)
+
+	// Send blur events along the focus chain.
+	if root != nil && root.focusChain(&chain) {
+		for index, pr := range chain {
+			if index == 0 {
+				pr.Blur()
+			}
+			pr.blurred()
+		}
+
+		// Hide the cursor. If it's needed, the new focused primitive will show it
+		// again.
+		if screen != nil {
+			screen.HideCursor()
+		}
+	} // At this point, no primitive has focus.
+
+	// Focus the new primitive.
+	var delegated bool
 	if p != nil {
 		p.Focus(func(p Primitive) {
+			delegated = true // Avoids multiple focus notifications.
 			a.SetFocus(p)
 		})
+	}
+
+	// If the primitive delegated focus to a child, that call has already
+	// notified the focus listeners.
+	if delegated {
+		return a
+	}
+
+	// Send focus events along the new focus chain.
+	chain = chain[:0]
+	if root != nil && root.focusChain(&chain) {
+		for _, pr := range chain {
+			pr.focused()
+		}
 	}
 
 	return a
@@ -822,7 +889,14 @@ func (a *Application) SetFocus(p Primitive) *Application {
 func (a *Application) GetFocus() Primitive {
 	a.RLock()
 	defer a.RUnlock()
-	return a.focus
+	if a.root == nil {
+		return nil
+	}
+	chain := make([]Primitive, 0, 10)
+	if a.root.focusChain(&chain) && len(chain) > 0 {
+		return chain[0]
+	}
+	return nil
 }
 
 // QueueUpdate is used to synchronize access to primitives from non-main
